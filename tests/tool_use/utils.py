@@ -87,7 +87,16 @@ CONFIGS: Dict[str, ServerConfig] = {
         "call the tool. Otherwise, answer the user's query directly "
         "without calling a tool. DO NOT CALL A TOOL THAT IS IRRELEVANT "
         "to the user's question - just respond to it normally."
+    },
+    "granite": {
+        "model":
+        "ibm-granite/granite-20b-functioncalling",
+        "arguments": [
+            "--tool-call-parser", "granite", "--chat-template",
+            str(VLLM_PATH / "examples/tool_chat_template_granite.jinja")
+        ],
     }
+
 }
 
 WEATHER_TOOL: ChatCompletionToolParam = {
