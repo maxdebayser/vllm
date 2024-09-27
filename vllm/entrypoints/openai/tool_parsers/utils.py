@@ -1,6 +1,8 @@
 import json
 from json import JSONDecodeError, JSONDecoder
+
 import partial_json_parser
+
 
 def find_common_prefix(s1: str, s2: str) -> str:
     """
@@ -90,6 +92,7 @@ def find_all_indices(string, substring):
         indices.append(index)
     return indices
 
+
 # partial_json_parser doesn't support extra data and
 # JSONDecorder.raw_decode doesn't support partial JSON
 def partial_json_loads(input_str, flags):
@@ -101,6 +104,7 @@ def partial_json_loads(input_str, flags):
             return dec.raw_decode(input_str)
         else:
             raise
+
 
 def is_complete_json(input_str):
     try:

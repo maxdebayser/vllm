@@ -1,6 +1,6 @@
 import json
 import re
-from json import JSONDecodeError, JSONDecoder
+from json import JSONDecoder
 from typing import Dict, List, Sequence, Union
 
 import partial_json_parser
@@ -13,7 +13,9 @@ from vllm.entrypoints.openai.protocol import (DeltaFunctionCall, DeltaMessage,
                                               FunctionCall, ToolCall)
 from vllm.entrypoints.openai.tool_parsers.abstract_tool_parser import (
     ToolParser)
-from vllm.entrypoints.openai.tool_parsers.utils import find_common_prefix, is_complete_json, partial_json_loads
+from vllm.entrypoints.openai.tool_parsers.utils import (find_common_prefix,
+                                                        is_complete_json,
+                                                        partial_json_loads)
 from vllm.logger import init_logger
 from vllm.utils import random_uuid
 

@@ -29,9 +29,9 @@ from vllm.entrypoints.openai.serving_engine import (BaseModelPath,
                                                     OpenAIServing,
                                                     PromptAdapterPath,
                                                     TextTokensPrompt)
-from vllm.entrypoints.openai.tool_parsers import (GraniteToolParser,
-                                                  Llama3JsonToolParser,
+from vllm.entrypoints.openai.tool_parsers import (Granite20bFCToolParser,
                                                   Hermes2ProToolParser,
+                                                  Llama3JsonToolParser,
                                                   MistralToolParser,
                                                   ToolParser)
 from vllm.inputs import TokensPrompt
@@ -89,8 +89,8 @@ class OpenAIServingChat(OpenAIServing):
                 self.tool_parser = Hermes2ProToolParser
             elif tool_parser == "llama3_json":
                 self.tool_parser = Llama3JsonToolParser
-            elif tool_parser == "granite":
-                self.tool_parser = GraniteToolParser
+            elif tool_parser == "granite-20b-fc":
+                self.tool_parser = Granite20bFCToolParser
             else:
                 raise TypeError("Error: --enable-auto-tool-choice requires "
                                 "--tool-call-parser")

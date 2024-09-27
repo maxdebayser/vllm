@@ -1,25 +1,36 @@
 import json
-from json import JSONDecodeError, JSONDecoder
 import re
+from json import JSONDecoder
 from typing import Dict, Sequence, Union
+
 import partial_json_parser
 from partial_json_parser.core.options import Allow
+
 from vllm.entrypoints.openai.protocol import (DeltaFunctionCall, DeltaMessage,
                                               DeltaToolCall,
                                               ExtractedToolCallInformation,
                                               FunctionCall, ToolCall)
 from vllm.entrypoints.openai.tool_parsers.abstract_tool_parser import (
     ToolParser)
+from vllm.entrypoints.openai.tool_parsers.utils import (find_common_prefix,
+                                                        is_complete_json,
+                                                        partial_json_loads)
 from vllm.logger import init_logger
-from vllm.utils import random_uuid
 from vllm.transformers_utils.tokenizer import AnyTokenizer
-from vllm.entrypoints.openai.tool_parsers.utils import find_common_prefix, is_complete_json, partial_json_loads
+from vllm.utils import random_uuid
 
-import traceback
 logger = init_logger(__name__)
 
 
-class GraniteToolParser(ToolParser):
+class Granite20bFCToolParser(ToolParser):
+    """
+    Tool call parser for the granite-20b-functioncalling model intended
+    for use with the examples/tool_chat_template_granite20b_fc.jinja
+    template.
+
+    Used when --enable-auto-tool-choice --tool-call-parser granite-20-fc
+    are all set
+    """
 
     def __init__(self, tokenizer: AnyTokenizer):
         super().__init__(tokenizer)
@@ -52,7 +63,8 @@ class GraniteToolParser(ToolParser):
                                                 i + 1 < len(matches) else None)
 
                     raw_function_calls.append(
-                        dec.raw_decode(model_output[start_of_json:next_function_call_start])[0])
+                        dec.raw_decode(model_output[
+                            start_of_json:next_function_call_start])[0])
 
                 logger.debug("Extracted %d tool calls",
                              len(raw_function_calls))
@@ -77,7 +89,6 @@ class GraniteToolParser(ToolParser):
             except Exception as e:
                 logger.error("Error in extracting tool call from response %s",
                              e)
-                traceback.print_exception(e)
                 return ExtractedToolCallInformation(tools_called=False,
                                                     tool_calls=[],
                                                     content=model_output)
@@ -92,7 +103,8 @@ class GraniteToolParser(ToolParser):
         delta_token_ids: Sequence[int],
     ) -> Union[DeltaMessage, None]:
 
-        if len(current_text) < len(self.bot_token) and self.bot_token.startswith(current_text):
+        if len(current_text) < len(
+                self.bot_token) and self.bot_token.startswith(current_text):
             return None
 
         if not current_text.startswith(self.bot_token):
@@ -116,7 +128,7 @@ class GraniteToolParser(ToolParser):
                     is_complete.append(
                         is_complete_json(current_text[start_idx:start_idx +
                                                       end_idx]))
-                    start_idx += end_idx + len(self.bot_token)+1
+                    start_idx += end_idx + len(self.bot_token) + 1
                     tool_call_arr.append(obj)
             except partial_json_parser.core.exceptions.MalformedJSON:
                 logger.debug('not enough tokens to parse into JSON yet')
@@ -229,4 +241,3 @@ class GraniteToolParser(ToolParser):
                 "Skipping chunk as a result of tool streaming extraction "
                 "error")
             return None
-
