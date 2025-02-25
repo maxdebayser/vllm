@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+
 # adapted from https://github.com/huggingface/transformers/blob/v4.39.3/src/transformers/models/fuyu/modeling_fuyu.py
 # Copyright 2023 The vLLM team.
 # Copyright 2023 HuggingFace Inc. team. All rights reserved.
@@ -16,27 +18,26 @@
 """ PyTorch Fuyu model."""
 import math
 from typing import (Iterable, List, Literal, Mapping, Optional, Set, Tuple,
-                    TypedDict, Union)
+                    TypedDict)
 
 import torch
 import torch.nn as nn
 from transformers import (BatchFeature, FuyuConfig, FuyuImageProcessor,
                           FuyuProcessor)
 
-from vllm.attention import AttentionMetadata
 from vllm.config import VllmConfig
 from vllm.model_executor.layers.linear import ColumnParallelLinear
 from vllm.model_executor.layers.sampler import SamplerOutput
 from vllm.model_executor.models.persimmon import PersimmonForCausalLM
 from vllm.model_executor.sampling_metadata import SamplingMetadata
 from vllm.multimodal import MULTIMODAL_REGISTRY
-from vllm.multimodal.inputs import (MultiModalDataDict, MultiModalFieldConfig,
-                                    MultiModalInputsV2, MultiModalKwargs,
-                                    NestedTensors, PlaceholderRange)
+from vllm.multimodal.inputs import (MultiModalFieldConfig, MultiModalKwargs,
+                                    NestedTensors)
 from vllm.multimodal.parse import (ImageProcessorItems, ImageSize,
                                    MultiModalDataItems)
 from vllm.multimodal.processing import (BaseMultiModalProcessor,
-                                        BaseProcessingInfo, PromptReplacement)
+                                        BaseProcessingInfo, PromptReplacement,
+                                        PromptReplacementDetails)
 from vllm.multimodal.profiling import BaseDummyInputsBuilder, ProcessorInputs
 from vllm.sequence import IntermediateTensors
 
@@ -69,8 +70,8 @@ class FuyuProcessingInfo(BaseProcessingInfo):
     def get_hf_config(self):
         return self.ctx.get_hf_config(FuyuConfig)
 
-    def get_hf_processor(self):
-        return self.ctx.get_hf_processor(FuyuProcessor)
+    def get_hf_processor(self, **kwargs: object):
+        return self.ctx.get_hf_processor(FuyuProcessor, **kwargs)
 
     def get_image_processor(self) -> FuyuImageProcessor:
         return self.get_hf_processor().image_processor
@@ -78,7 +79,11 @@ class FuyuProcessingInfo(BaseProcessingInfo):
     def get_supported_mm_limits(self) -> Mapping[str, Optional[int]]:
         return {"image": 1}
 
-    def get_mm_max_tokens_per_item(self, seq_len: int) -> Mapping[str, int]:
+    def get_mm_max_tokens_per_item(
+        self,
+        seq_len: int,
+        mm_counts: Mapping[str, int],
+    ) -> Mapping[str, int]:
         target_width, target_height = self.get_image_size_with_most_features()
 
         max_ncols, max_nrows = self.get_image_feature_grid_size(
@@ -98,6 +103,8 @@ class FuyuProcessingInfo(BaseProcessingInfo):
         image_processor = self.get_image_processor()
         target_width = image_processor.size["width"]
         target_height = image_processor.size["height"]
+        patch_width = image_processor.patch_size["width"]
+        patch_height = image_processor.patch_size["height"]
 
         if not (image_width <= target_width and image_height <= target_height):
             height_scale_factor = target_height / image_height
@@ -107,8 +114,8 @@ class FuyuProcessingInfo(BaseProcessingInfo):
             image_height = int(image_height * optimal_scale_factor)
             image_width = int(image_width * optimal_scale_factor)
 
-        ncols = math.ceil(image_width / 30)
-        nrows = math.ceil(image_height / 30)
+        ncols = math.ceil(image_width / patch_width)
+        nrows = math.ceil(image_height / patch_height)
         return ncols, nrows
 
     def get_image_size_with_most_features(self) -> ImageSize:
@@ -183,7 +190,9 @@ class FuyuMultiModalProcessor(BaseMultiModalProcessor[FuyuProcessingInfo]):
     ) -> list[int]:
         # HF processor adds boa_token_id
         tokenizer = self.info.get_tokenizer()
-        boa_token_id: int = tokenizer.vocab["<0x04>"]  # type: ignore
+        vocab = tokenizer.get_vocab()
+
+        boa_token_id = vocab["<0x04>"]
 
         return prompt_tokens + [boa_token_id]
 
@@ -202,6 +211,7 @@ class FuyuMultiModalProcessor(BaseMultiModalProcessor[FuyuProcessingInfo]):
     ) -> list[PromptReplacement]:
         hf_config = self.info.get_hf_config()
         bos_token_id = hf_config.bos_token_id
+        assert isinstance(bos_token_id, int)
 
         tokenizer = self.info.get_tokenizer()
         eot_token_id = tokenizer.bos_token_id
@@ -215,9 +225,13 @@ class FuyuMultiModalProcessor(BaseMultiModalProcessor[FuyuProcessingInfo]):
                 image_width=image_size.width,
                 image_height=image_size.height,
             )
+            image_tokens = ([_IMAGE_TOKEN_ID] * ncols +
+                            [_NEWLINE_TOKEN_ID]) * nrows
 
-            return (([_IMAGE_TOKEN_ID] * ncols + [_NEWLINE_TOKEN_ID]) * nrows +
-                    [bos_token_id])
+            return PromptReplacementDetails(
+                full=image_tokens + [bos_token_id],
+                features=image_tokens,
+            )
 
         return [
             PromptReplacement(
@@ -226,26 +240,6 @@ class FuyuMultiModalProcessor(BaseMultiModalProcessor[FuyuProcessingInfo]):
                 replacement=get_replacement_fuyu,
             )
         ]
-
-    def apply(
-        self,
-        prompt: Union[str, list[int]],
-        mm_data: MultiModalDataDict,
-        hf_processor_mm_kwargs: Mapping[str, object],
-    ) -> MultiModalInputsV2:
-        result = super().apply(prompt, mm_data, hf_processor_mm_kwargs)
-
-        # Only |SPEAKER| (image) tokens should be considered as placeholders,
-        # so we ignore the trailing bos_token_id
-        result["mm_placeholders"] = {
-            modality: [
-                PlaceholderRange(offset=p["offset"], length=p["length"] - 1)
-                for p in ps
-            ]
-            for modality, ps in result["mm_placeholders"].items()
-        }
-
-        return result
 
 
 @MULTIMODAL_REGISTRY.register_processor(FuyuMultiModalProcessor,
@@ -296,7 +290,7 @@ class FuyuForCausalLM(nn.Module, SupportsMultiModal, SupportsPP):
                 expected_expr = str(expected_dims)
                 raise ValueError(
                     "The expected shape of pixel values per image per batch "
-                    f" per patch is {expected_expr}. "
+                    f"per patch is {expected_expr}. "
                     f"You supplied {tuple(d.shape)}.")
 
         for d in data:
@@ -356,8 +350,6 @@ class FuyuForCausalLM(nn.Module, SupportsMultiModal, SupportsPP):
         self,
         input_ids: torch.Tensor,
         positions: torch.Tensor,
-        kv_caches: List[torch.Tensor],
-        attn_metadata: AttentionMetadata,
         intermediate_tensors: Optional[IntermediateTensors] = None,
         inputs_embeds: Optional[torch.Tensor] = None,
         **kwargs: object,
@@ -376,8 +368,6 @@ class FuyuForCausalLM(nn.Module, SupportsMultiModal, SupportsPP):
         hidden_states = self.language_model(
             input_ids=input_ids,
             positions=positions,
-            kv_caches=kv_caches,
-            attn_metadata=attn_metadata,
             intermediate_tensors=intermediate_tensors,
             inputs_embeds=inputs_embeds,
         )
