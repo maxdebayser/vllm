@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 import time
 from dataclasses import dataclass
 from typing import (TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple,
@@ -100,6 +101,9 @@ class SpyreModelRunner(ModelRunnerBase[ModelInputForSpyre]):
         self._req_ids2idx: dict = {}
         # Lazy initialization: after load_model.
         self.model: nn.Module
+
+    def get_model(self) -> nn.Module:
+        return self.model
 
     def load_model(self, prompt_lens: Iterable[int],
                    num_decode_tokens: Iterable[int]) -> None:

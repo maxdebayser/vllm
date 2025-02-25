@@ -41,6 +41,11 @@ if VLLM_TARGET_DEVICE in ["cuda", "rocm"]:
     # this import when using cuda or rocm.
     import torch
     from torch.utils.cpp_extension import CUDA_HOME, ROCM_HOME
+    torch_version_hip = torch.version.hip
+    torch_version_cuda = torch.version.cuda
+else:
+    torch_version_hip = None
+    torch_version_cuda = None
 
 if sys.platform.startswith("darwin") and VLLM_TARGET_DEVICE != "cpu":
     logger.warning(
@@ -53,9 +58,9 @@ elif not (sys.platform.startswith("linux")
         "Building on %s, "
         "so vLLM may not be able to run correctly", sys.platform)
     VLLM_TARGET_DEVICE = "empty"
-elif (sys.platform.startswith("linux") and torch.version.cuda is None
+elif (sys.platform.startswith("linux") and torch_version_cuda is None
       and os.getenv("VLLM_TARGET_DEVICE") is None
-      and torch.version.hip is None):
+      and torch_version_hip is None):
     # if cuda or hip is not available and VLLM_TARGET_DEVICE is not set,
     # fallback to cpu
     VLLM_TARGET_DEVICE = "cpu"
@@ -389,13 +394,13 @@ def _no_device() -> bool:
 
 
 def _is_cuda() -> bool:
-    return (VLLM_TARGET_DEVICE == "cuda" and (torch.version.cuda is not None)
+    return (VLLM_TARGET_DEVICE == "cuda" and (torch_version_cuda is not None)
             and not (_is_neuron() or _is_tpu() or _is_hpu()))
 
 
 def _is_hip() -> bool:
     return (VLLM_TARGET_DEVICE == "cuda"
-            or VLLM_TARGET_DEVICE == "rocm") and torch.version.hip is not None
+            or VLLM_TARGET_DEVICE == "rocm") and torch_version_hip is not None
 
 
 def _is_neuron() -> bool:
@@ -526,7 +531,7 @@ def get_vllm_version() -> str:
                     version += f"{sep}cu{cuda_version_str}"
     elif _is_hip():
         # Get the Rocm Version
-        rocm_version = get_rocm_version() or torch.version.hip
+        rocm_version = get_rocm_version() or torch_version_hip
         if rocm_version and rocm_version != MAIN_CUDA_VERSION:
             version += f"{sep}rocm{rocm_version.replace('.', '')[:3]}"
     elif _is_neuron():
@@ -578,7 +583,7 @@ def get_requirements() -> List[str]:
         requirements = _read_requirements("requirements-common.txt")
     elif _is_cuda():
         requirements = _read_requirements("requirements-cuda.txt")
-        cuda_major, cuda_minor = torch.version.cuda.split(".")
+        cuda_major, cuda_minor = torch_version_cuda.split(".")
         modified_requirements = []
         for req in requirements:
             if ("vllm-flash-attn" in req
