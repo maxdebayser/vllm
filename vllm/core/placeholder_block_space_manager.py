@@ -66,6 +66,9 @@ class PlaceholderBlockSpaceManager(BlockSpaceManager):
         # No operation on free
         return
 
+    def remove_seq_from_computed_blocks_tracker(self, seq: Sequence) -> None:
+        return None
+
     def get_block_table(self, seq: Sequence) -> List[int]:
         return None  # type: ignore
 
