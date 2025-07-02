@@ -124,7 +124,7 @@ class GPUModelRunner(LoRAModelRunnerMixin):
                 cache_config.cache_dtype]
 
         self.is_multimodal_model = model_config.is_multimodal_model
-        self.is_pooling_model = model_config.is_pooling_model
+        self.is_pooling_model = model_config.pooler_config is not None
         self.model_supports_multimodal_raw_input = (
             model_config.model_supports_multimodal_raw_input)
         self.max_model_len = model_config.max_model_len
@@ -2236,7 +2236,9 @@ class GPUModelRunner(LoRAModelRunnerMixin):
     def profile_run(self) -> None:
         # Profile with multimodal encoder & encoder cache.
         # TODO: handle encoder-decoder models once we support them.
-        if (self.is_multimodal_model and self.max_num_encoder_input_tokens > 0
+        if (self.is_multimodal_model and not \
+            self.model_supports_multimodal_raw_input and \
+                self.max_num_encoder_input_tokens > 0
                 and self.encoder_cache_size > 0):
 
             # NOTE: Currently model is profiled with a single non-text
