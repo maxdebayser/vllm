@@ -1352,7 +1352,11 @@ class GPUModelRunner(LoRAModelRunnerMixin):
 
         # _prepare_inputs may reorder the batch, so we must gather multi
         # modal outputs after that to ensure the correct order
-        if self.is_multimodal_model:
+
+        use_mm_embeddings = self.is_multimodal_model and not \
+            self.model_supports_multimodal_raw_input
+
+        if use_mm_embeddings:
             # Run the multimodal encoder if any.
             self._execute_mm_encoder(scheduler_output)
             mm_embeds = self._gather_mm_embeddings(scheduler_output)
@@ -1360,13 +1364,12 @@ class GPUModelRunner(LoRAModelRunnerMixin):
             mm_embeds = []
 
         model_kwargs: dict[str, Any] = {}
-        if self.is_multimodal_model and get_pp_group().is_first_rank:
+        if use_mm_embeddings and get_pp_group().is_first_rank:
             # NOTE(woosuk): To unify token ids and soft tokens (vision
             # embeddings), we always use embeddings (rather than token ids)
             # as input to the multimodal model, even when the input is text.
             input_ids = self.input_ids[:num_scheduled_tokens]
-            self._maybe_add_multimodal_kwargs(
-                model_kwargs=model_kwargs, scheduler_output=scheduler_output)
+
             if mm_embeds:
                 inputs_embeds = self.model.get_input_embeddings(
                     input_ids, mm_embeds)
@@ -1377,6 +1380,8 @@ class GPUModelRunner(LoRAModelRunnerMixin):
             inputs_embeds = self.inputs_embeds[:num_input_tokens]
             input_ids = None
         else:
+            self._maybe_add_multimodal_kwargs(
+                model_kwargs=model_kwargs, scheduler_output=scheduler_output)
             # For text-only models, we use token ids as input.
             # While it is possible to use embeddings as input just like the
             # multimodal models, it is not desirable for performance since
@@ -2047,12 +2052,14 @@ class GPUModelRunner(LoRAModelRunnerMixin):
                                             num_scheduled_tokens):
             model = self.model
             model_kwargs: dict[str, Any] = {}
-            if self.is_multimodal_model:
-                self._maybe_add_multimodal_kwargs(model_kwargs=model_kwargs,
-                                                  num_reqs=num_reqs)
+            if self.is_multimodal_model and not \
+                self.model_supports_multimodal_raw_input:
+
                 input_ids = None
                 inputs_embeds = self.inputs_embeds[:num_tokens]
             else:
+                self._maybe_add_multimodal_kwargs(model_kwargs=model_kwargs,
+                                                  num_reqs=num_reqs)
                 input_ids = self.input_ids[:num_tokens]
                 inputs_embeds = None
             if self.uses_mrope:

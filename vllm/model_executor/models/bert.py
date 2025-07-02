@@ -36,8 +36,8 @@ from vllm.sequence import IntermediateTensors, PoolerOutput
 from vllm.transformers_utils.config import (
     get_cross_encoder_activation_function)
 
-from .interfaces import (MultiModalEmbeddings, SupportsCrossEncoding,
-                         SupportsMultiModal, SupportsQuant)
+from .interfaces import (SupportsCrossEncoding, SupportsMultiModalWithRawInput,
+                         SupportsQuant)
 from .utils import WeightsMapper, maybe_prefix
 
 
@@ -555,56 +555,12 @@ class TokenTypeInputBuilder(BaseDummyInputsBuilder[TokenTypeProcessingInfo]):
         return ProcessorInputs(prompt=dummy_prompt, mm_data=dummy_mm_data)
 
 
-class BertMMTokenIdsMixin(SupportsMultiModal):
-
-    def get_multimodal_embeddings(self,
-                                  **kwargs: object) -> MultiModalEmbeddings:
-        token_type_ids = kwargs.pop(TOKEN_TYPES, None)
-
-        if token_type_ids is None:
-            return []
-
-        if not isinstance(token_type_ids, torch.Tensor):
-            raise ValueError("Incorrect type token_type_ids. "
-                             f"Got type: {type(token_type_ids)}")
-
-        return self.get_language_model().embeddings(
-            token_type_ids=token_type_ids, apply_layer_norm=False)
-
-    def maybe_store_input_ids(self, input_ids: torch.Tensor):
-        pass
-
-    def get_input_embeddings(
-        self,
-        input_ids: torch.Tensor,
-        token_type_embeddings: Optional[MultiModalEmbeddings] = None,
-    ) -> torch.Tensor:
-
-        # save for forward()
-        self.maybe_store_input_ids(input_ids)
-
-        token_type_ids: Optional[torch.Tensor] = None
-
-        if token_type_embeddings is not None:
-            assert isinstance(token_type_embeddings, list)
-            token_type_embeddings = torch.cat(token_type_embeddings)
-        else:
-            token_type_ids = torch.zeros(input_ids.size(),
-                                         dtype=torch.long,
-                                         device=input_ids.device)
-
-        return self.get_language_model().embeddings(
-            input_ids=input_ids,
-            inputs_embeds=token_type_embeddings,
-            token_type_ids=token_type_ids,
-            apply_layer_norm=False)
-
-
 @MULTIMODAL_REGISTRY.register_processor(TokenTypeMultiModalProcessor,
                                         info=TokenTypeProcessingInfo,
                                         dummy_inputs=TokenTypeInputBuilder)
 class BertForSequenceClassification(nn.Module, SupportsCrossEncoding,
-                                    BertMMTokenIdsMixin, SupportsQuant):
+                                    SupportsMultiModalWithRawInput,
+                                    SupportsQuant):
     """A model that uses Bert to provide embedding functionalities.
 
    This class encapsulates the BertModel and provides an interface for

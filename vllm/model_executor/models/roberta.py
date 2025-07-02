@@ -15,8 +15,8 @@ from vllm.model_executor.layers.pooler import ClassifierPooler
 from vllm.model_executor.layers.vocab_parallel_embedding import (
     VocabParallelEmbedding)
 from vllm.model_executor.model_loader.weight_utils import default_weight_loader
-from vllm.model_executor.models.bert import (BertEmbeddingModel,
-                                             BertMMTokenIdsMixin, BertModel,
+from vllm.model_executor.models.bert import (BertEmbeddingModel, BertModel,
+                                             SupportsMultiModalWithRawInput,
                                              TokenTypeInputBuilder,
                                              TokenTypeMultiModalProcessor,
                                              TokenTypeProcessingInfo)
@@ -175,7 +175,8 @@ class RobertaEmbeddingModel(BertEmbeddingModel):
 @MULTIMODAL_REGISTRY.register_processor(TokenTypeMultiModalProcessor,
                                         info=TokenTypeProcessingInfo,
                                         dummy_inputs=TokenTypeInputBuilder)
-class RobertaForSequenceClassification(nn.Module, BertMMTokenIdsMixin,
+class RobertaForSequenceClassification(nn.Module,
+                                       SupportsMultiModalWithRawInput,
                                        SupportsCrossEncoding):
     """A model that uses Roberta to provide embedding functionalities.
 
@@ -216,10 +217,6 @@ class RobertaForSequenceClassification(nn.Module, BertMMTokenIdsMixin,
 
         self._pooler = ClassifierPooler(vllm_config.model_config,
                                         self.classifier)
-        self.input_ids: Optional[torch.Tensor] = None
-
-    def maybe_store_input_ids(self, input_ids: torch.Tensor):
-        self.input_ids = input_ids
 
     def get_language_model(self) -> torch.nn.Module:
         return self.roberta
@@ -254,7 +251,7 @@ class RobertaForSequenceClassification(nn.Module, BertMMTokenIdsMixin,
         inputs_embeds: Optional[torch.Tensor] = None,
         token_type_ids: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        replace_roberta_positions(input_ids=input_ids or self.input_ids,
+        replace_roberta_positions(input_ids=input_ids,
                                   position_ids=positions,
                                   padding_idx=self.padding_idx)
         return self.roberta(input_ids=input_ids,
