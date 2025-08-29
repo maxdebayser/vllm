@@ -64,6 +64,7 @@ from vllm.entrypoints.openai.protocol import (ChatCompletionRequest,
                                               EmbeddingRequest,
                                               EmbeddingResponse, ErrorInfo,
                                               ErrorResponse,
+                                              IOProcessorResponse,
                                               LoadLoRAAdapterRequest,
                                               PoolingRequest, PoolingResponse,
                                               RerankRequest, RerankResponse,
@@ -795,7 +796,7 @@ async def create_pooling(request: PoolingRequest, raw_request: Request):
     if isinstance(generator, ErrorResponse):
         return JSONResponse(content=generator.model_dump(),
                             status_code=generator.error.code)
-    elif isinstance(generator, PoolingResponse):
+    elif isinstance(generator, (PoolingResponse, IOProcessorResponse)):
         return JSONResponse(content=generator.model_dump())
 
     assert_never(generator)
