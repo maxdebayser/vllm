@@ -2,6 +2,7 @@
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 
 import asyncio
+from collections.abc import AsyncGenerator
 from typing import Optional, Union
 
 from fastapi import Request
@@ -15,6 +16,9 @@ from vllm.entrypoints.openai.protocol import (ErrorResponse,
 from vllm.entrypoints.openai.serving_engine import OpenAIServing
 from vllm.entrypoints.openai.serving_models import OpenAIServingModels
 from vllm.logger import init_logger
+from vllm.outputs import PoolingRequestOutput
+from vllm.plugins.io_processors import get_io_processor
+from vllm.utils import merge_async_iterators
 
 logger = init_logger(__name__)
 
@@ -35,6 +39,8 @@ class ServingPoolingWithIOPlugin(OpenAIServing):
             models=models,
             request_logger=request_logger,
         )
+        io_processor_plugin = self.model_config.io_processor_plugin
+        self.io_processor = get_io_processor(vllm_config, io_processor_plugin)
 
     async def create_pooling_with_io_plugin(
         self,
@@ -49,23 +55,51 @@ class ServingPoolingWithIOPlugin(OpenAIServing):
         request_id = f"io-processor-{self._base_request_id(raw_request)}"
 
         try:
+
             pooling_params = request.to_pooling_params()
             trace_headers = (None if raw_request is None else await
                              self._get_trace_headers(raw_request.headers))
 
-            output = (await self.engine_client.encode_with_io_processor(
-                request,
-                pooling_params,
-                request_id,
-                trace_headers=trace_headers,
-                priority=request.priority,
-            ))
+            if self.io_processor is None:
+                raise ValueError(
+                    "No IOProcessor plugin installed. Please refer "
+                    "to the documentation and to the "
+                    "'prithvi_geospatial_mae_io_processor' "
+                    "offline inference example for more details.")
+
+            validated_prompt = self.io_processor.parse_request(request)
+
+            # Here I am assuming that the image prediction request might
+            # be split in multiple prompts because of tiling
+            prompts = await self.io_processor.pre_process_async(
+                prompt=validated_prompt, request_id=request_id)
+
+            # Schedule the request and get the result generator.
+            # Note that at the moment, models capable of generating images
+            # are piggybacking on the pooling models support.
+            # See the PrithviMAEGeospatial model
+            generators: list[AsyncGenerator[PoolingRequestOutput, None]] = []
+
+            for i, prompt in enumerate(prompts):
+                request_id_item = f"{request_id}-{i}"
+
+                generator = self.engine_client.encode(
+                    prompt,
+                    pooling_params,
+                    request_id_item,
+                    trace_headers=trace_headers,
+                    priority=request.priority,
+                )
+                generators.append(generator)
+
+            output = await self.io_processor.post_process_async(
+                model_output=merge_async_iterators(*generators),
+                request_id=request_id,
+            )
+
+            return self.io_processor.output_to_response(output)
+
         except ValueError as e:
             return self.create_error_response(str(e))
         except asyncio.CancelledError:
             return self.create_error_response("Client disconnected")
-
-        io_processor = await self.engine_client.get_io_processor()
-        response = io_processor.output_to_response(output)
-
-        return response
