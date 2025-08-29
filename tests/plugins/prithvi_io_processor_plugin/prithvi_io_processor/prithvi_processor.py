@@ -420,11 +420,11 @@ class PrithviMultimodalDataProcessor(IOProcessor):
 
     async def post_process_async(
         self,
-        model_output: AsyncGenerator[PoolingRequestOutput],
+        model_output: AsyncGenerator[tuple[int, PoolingRequestOutput]],
         request_id: Optional[str] = None,
         **kwargs,
     ) -> IOProcessorOutput:
-        collected_output = [item async for item in model_output]
+        collected_output = [item async for i, item in model_output]
         return self.post_process(collected_output, request_id, **kwargs)
 
 

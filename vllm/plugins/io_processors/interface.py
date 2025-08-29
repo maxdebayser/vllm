@@ -45,7 +45,7 @@ class IOProcessor(ABC, Generic[IOProcessorInput, IOProcessorOutput]):
 
     async def post_process_async(
         self,
-        model_output: AsyncGenerator[PoolingRequestOutput],
+        model_output: AsyncGenerator[tuple[int, PoolingRequestOutput]],
         request_id: Optional[str] = None,
         **kwargs,
     ) -> IOProcessorOutput:
