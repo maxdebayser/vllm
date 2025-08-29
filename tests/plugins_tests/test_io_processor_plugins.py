@@ -114,7 +114,7 @@ async def test_prithvi_mae_plugin_online(
     }
 
     ret = requests.post(
-        server.url_for("io_processor_pooling"),
+        server.url_for("pooling"),
         json=request_payload_url,
     )
 
