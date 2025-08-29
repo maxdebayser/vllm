@@ -4,7 +4,7 @@ import asyncio
 import os
 import socket
 import time
-from collections.abc import AsyncGenerator, Iterable, Mapping, Sequence
+from collections.abc import AsyncGenerator, Iterable, Mapping
 from copy import copy
 from typing import Any, Optional, Union
 
@@ -618,17 +618,8 @@ class AsyncLLM(EngineClient):
             )
             generators.append(generator)
 
-        result_generator = merge_async_iterators(*generators)
-        num_prompts = len(prompts)
-
-        final_results: Sequence[Optional[PoolingRequestOutput]]
-        final_results = [None] * num_prompts
-
-        async for i, res in result_generator:
-            final_results[i] = res
-
         post_processed_outputs = (await self.io_processor.post_process_async(
-            model_output=final_results,
+            model_output=merge_async_iterators(*generators),
             request_id=request_id,
         ))
 
