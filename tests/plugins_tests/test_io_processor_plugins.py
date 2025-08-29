@@ -60,10 +60,11 @@ def test_prithvi_mae_plugin_offline(model_name: str):
     )
 
     pooling_params = PoolingParams(task="encode", softmax=False)
-    output = llm.encode_with_io_processor(
+    pooler_output = llm.encode(
         img_prompt,
         pooling_params=pooling_params,
     )
+    output = pooler_output[0].outputs
 
     # verify the output is formatted as expected for this plugin
     assert all(
