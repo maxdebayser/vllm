@@ -78,7 +78,7 @@ class OpenAIServingPooling(OpenAIServing):
 
     async def create_pooling(
         self,
-        request: PoolingRequest | IOProcessorRequest,
+        request: PoolingRequest,
         raw_request: Optional[Request] = None,
     ) -> Union[PoolingResponse, IOProcessorResponse, ErrorResponse]:
         """
