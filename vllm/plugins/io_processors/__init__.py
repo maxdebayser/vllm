@@ -35,6 +35,20 @@ def get_io_processor(
 
     logger.debug("IOProcessor plugin to be loaded %s", model_plugin)
 
+    try:
+        plugin_class = resolve_obj_by_qualname(model_plugin)
+        if issubclass(plugin_class, IOProcessor):
+            return plugin_class(vllm_config)
+        raise ValueError(
+            f"The model requires the '{model_plugin}' IO Processor plugin "
+            "but it is not an instance of IOProcessor."
+        )
+    except (ModuleNotFoundError, AttributeError):
+        logger.debug(
+            "%s is not a known class, looking for external modules", model_plugin
+        )
+        pass
+
     # Load all installed plugin in the group
     multimodal_data_processor_plugins = load_plugins_by_group(
         IO_PROCESSOR_PLUGINS_GROUP
